@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ω — Toroidal Market Model (Disciplined Metaphor)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#000;color:#fff;font-family:'Courier Prime',monospace;overflow:hidden;width:100vw;height:100vh;cursor:grab;user-select:none;}
+  body.dragging{cursor:grabbing;}
+  canvas#main{display:block;position:absolute;top:0;left:0;}
+  canvas#shad{position:absolute;bottom:0;left:0;z-index:5;pointer-events:none;}
+  #ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;}
+  .omega{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;color:rgba(255,255,255,0.45);letter-spacing:0.15em;}
+  .hint{position:absolute;top:52px;left:50%;transform:translateX(-50%);font-size:7px;letter-spacing:0.35em;color:rgba(255,255,255,0.1);white-space:nowrap;}
+  .pine{position:absolute;top:50%;left:18px;transform:translateY(-50%);font-size:7px;letter-spacing:0.15em;color:rgba(255,255,255,0.1);line-height:2.4;}
+  .pine span{color:rgba(255,255,255,0.22);}
+  .data{position:absolute;top:50%;right:18px;transform:translateY(-50%);display:flex;flex-direction:column;gap:16px;align-items:flex-end;}
+  .di{font-size:7px;letter-spacing:0.25em;color:rgba(255,255,255,0.15);text-align:right;text-transform:uppercase;}
+  .dv{font-size:12px;color:rgba(255,255,255,0.45);margin-top:2px;font-family:'Cormorant Garamond',serif;}
+  .axes{position:absolute;bottom:128px;left:18px;font-size:7px;letter-spacing:0.2em;color:rgba(255,255,255,0.12);line-height:2.2;}
+  .slabel{position:absolute;bottom:128px;right:18px;font-size:7px;letter-spacing:0.15em;color:rgba(255,255,255,0.09);text-align:right;line-height:2.2;font-family:'Cormorant Garamond',serif;font-style:italic;}
+  .noti{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-family:'Cormorant Garamond',serif;font-size:8px;letter-spacing:0.6em;color:rgba(255,255,255,0.07);font-style:italic;}
+
+  /* hidden dev panel (toggle with I) */
+  #panel{position:absolute;left:12px;bottom:12px;z-index:20;pointer-events:auto;display:none;max-width:min(520px,92vw);}
+  #panel.show{display:block;}
+  .pwrap{background:rgba(0,0,0,0.78);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(6px);padding:10px 12px;border-radius:10px;}
+  .pt{font-size:10px;letter-spacing:0.18em;color:rgba(255,255,255,0.35);margin-bottom:8px;text-transform:uppercase;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  label{font-size:9px;letter-spacing:0.15em;color:rgba(255,255,255,0.22);}
+  input[type="range"]{width:160px;}
+  textarea{width:100%;height:110px;background:rgba(0,0,0,0.6);color:rgba(255,255,255,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;font-family:'Courier Prime',monospace;font-size:11px;}
+  button{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.12);padding:6px 8px;border-radius:8px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;}
+  button:active{transform:translateY(1px);}
+  .mini{font-size:9px;color:rgba(255,255,255,0.18);margin-top:6px;line-height:1.45;}
+</style>
+</head>
+<body>
+<canvas id="main"></canvas>
+<canvas id="shad"></canvas>
+<div id="ui">
+  <div class="omega">Ω</div>
+  <div class="hint">drag to rotate · releases into orbit · press I for inputs</div>
+  <div class="pine">
+    HTF ANCHOR<br><span>= major radius R</span><br><br>
+    SHELLS S1–S4<br><span>= |price-open| / ATR ×0.33</span><br><br>
+    MACRO/MID LEVELS<br><span>= cross-sections</span><br><br>
+    ABOVE/BELOW OPEN<br><span>= hemisphere</span><br><br>
+    BAR COLOR<br><span>= rotation direction</span>
+  </div>
+  <div class="data">
+    <div class="di">TIME AXIS<br><span class="dv" id="vt">—</span></div>
+    <div class="di">SHELL<br><span class="dv" id="vs">—</span></div>
+    <div class="di">VOLUME<br><span class="dv" id="vv">—</span></div>
+    <div class="di">HEMISPHERE<br><span class="dv" id="vh">—</span></div>
+    <div class="di">BEHAVIOR<br><span class="dv" id="vb">—</span></div>
+  </div>
+  <div class="axes">X — TIME<br>Y — LOCATION<br>Z — BEHAVIOR</div>
+  <div class="slabel">the 2D shadow<br>of the donut</div>
+  <div class="noti">NOT I</div>
+</div>
+
+<div id="panel">
+  <div class="pwrap">
+    <div class="pt">Inputs (optional)</div>
+    <div class="row">
+      <label>volatility</label><input id="rngVol" type="range" min="0" max="100" value="52" />
+      <label>trend</label><input id="rngDrift" type="range" min="-100" max="100" value="0" />
+      <label>mean-revert</label><input id="rngMr" type="range" min="0" max="100" value="55" />
+      <button id="btnReset">reset</button>
+    </div>
+    <div class="mini">Paste candles (JSON array of {open,high,low,close,volume}) to drive the metaphor. If empty, it simulates. Press I to hide.</div>
+    <textarea id="txt" spellcheck="false" placeholder='[{"open":100,"high":102,"low":99,"close":101,"volume":1200}, ...]'></textarea>
+    <div class="row" style="margin-top:8px;">
+      <button id="btnUse">use candles</button>
+      <button id="btnSim">simulate</button>
+      <span class="mini" id="msg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// Canvas sizing
+// =====================================================
+const mc = document.getElementById('main'), ctx = mc.getContext('2d');
+const sc = document.getElementById('shad'), sctx = sc.getContext('2d');
+const SH = 108;
+let W,H;
+function resize(){W=mc.width=innerWidth;H=mc.height=innerHeight;sc.width=W;sc.height=SH;}
+resize();addEventListener('resize',resize);
+
+// =====================================================
+// Rotation interaction
+// =====================================================
+let rX=0.35,rY=0.18,vX=0,vY=0,dragging=false,autoRot=true,lmx=0,lmy=0;
+function down(x,y){dragging=true;autoRot=false;lmx=x;lmy=y;vX=vY=0;document.body.classList.add('dragging');}
+function move(x,y){if(!dragging)return;vX=(y-lmy)*0.006;vY=(x-lmx)*0.006;rX+=vX;rY+=vY;lmx=x;lmy=y;}
+function up(){dragging=false;document.body.classList.remove('dragging');}
+mc.addEventListener('mousedown',e=>down(e.clientX,e.clientY));
+addEventListener('mousemove',e=>move(e.clientX,e.clientY));
+addEventListener('mouseup',up);
+mc.addEventListener('touchstart',e=>down(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+addEventListener('touchmove',e=>move(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+addEventListener('touchend',up);
+
+// =====================================================
+// 3D helpers
+// =====================================================
+function rot(x,y,z,rx,ry){
+  let y1=y*Math.cos(rx)-z*Math.sin(rx), z1=y*Math.sin(rx)+z*Math.cos(rx);
+  let x2=x*Math.cos(ry)+z1*Math.sin(ry), z2=-x*Math.sin(ry)+z1*Math.cos(ry);
+  return [x2,y1,z2];
+}
+function proj(x,y,z,cx,cy,sc){
+  const f=2.6, d=f/(f+z);
+  return {px:cx+x*sc*d, py:cy+y*sc*d, d, z};
+}
+
+// Toroid base geometry
+const RM=0.29;         // major radius (anchor container)
+const Rm0=0.088;       // tube radius base (ATR shell scale)
+function txyz(th,ph,rm,rM){
+  return [(rm+rM*Math.cos(ph))*Math.cos(th),(rm+rM*Math.cos(ph))*Math.sin(th),rM*Math.sin(ph)];
+}
+
+// =====================================================
+// Data model (disciplined metaphor)
+// =====================================================
+// If candles are provided: compute anchor-open (htf_open proxy), ATR(10)*0.33 proxy, and per-candle states.
+// If not: simulate a price series with controllable drift/vol/mean-reversion.
+
+let mode='sim';
+let candles=[]; // array of {o,h,l,c,v}
+let idx=0;
+
+// state vars
+let anchorOpen=100;
+let atr33=1; // ATR*0.33
+let lastClose=100;
+let emaRng=1;
+
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function sgn(x){return x>0?1:x<0?-1:0;}
+
+// quick ATR proxy for candles: SMA of true range
+function computeATR33(cs){
+  const n=10;
+  let trs=[];
+  for(let i=0;i<cs.length;i++){
+    const c=cs[i];
+    const prev = i?cs[i-1].c:c.c;
+    const tr=Math.max(c.h-c.l, Math.abs(c.h-prev), Math.abs(c.l-prev));
+    trs.push(tr);
+  }
+  const atr=[];
+  for(let i=0;i<trs.length;i++){
+    let s=0,k=0;
+    for(let j=Math.max(0,i-n+1);j<=i;j++){s+=trs[j];k++;}
+    atr.push((s/k)*0.33);
+  }
+  return atr;
+}
+
+function resetSim(){
+  idx=0;
+  anchorOpen=100;
+  lastClose=100;
+  emaRng=1;
+}
+
+// simulation params
+const elVol=document.getElementById('rngVol');
+const elDr=document.getElementById('rngDrift');
+const elMr=document.getElementById('rngMr');
+const msg=document.getElementById('msg');
+
+function simStep(){
+  const vol = (+elVol.value)/100;         // 0..1
+  const drift = (+elDr.value)/1000;      // -0.1..0.1 scaled
+  const mr = (+elMr.value)/100;          // 0..1
+
+  // mean reversion toward anchorOpen, plus drift, plus noise
+  const pull = (anchorOpen - lastClose) * (0.02 * mr);
+  const noise = (Math.random()*2-1) * (0.9*vol);
+  const d = pull + drift + noise;
+
+  const o = lastClose;
+  const c = lastClose + d;
+  const wick = Math.abs(noise) * (1.8 + 2.2*vol);
+  const h = Math.max(o,c) + wick;
+  const l = Math.min(o,c) - wick;
+  const v = 1000 + Math.floor(4000*Math.abs(d)* (0.6+0.8*vol));
+
+  // update ATR proxy (EMA on range, then 0.33)
+  const rng = h-l;
+  emaRng = emaRng*0.90 + rng*0.10;
+  atr33 = Math.max(0.05, emaRng*0.33);
+
+  lastClose = c;
+
+  // axis events, periodic anchor reset (container)
+  if(idx % 240 === 0 && idx>0){
+    anchorOpen = lastClose;
+  }
+
+  idx++;
+  return {o,h,l,c,v};
+}
+
+let candleATRs=[];
+function useCandles(cs){
+  candles = cs;
+  candleATRs = computeATR33(cs);
+  idx = 0;
+  // anchorOpen: first candle open
+  anchorOpen = cs.length?cs[0].o:100;
+  lastClose = cs.length?cs[0].c:100;
+  atr33 = cs.length?Math.max(0.05,candleATRs[0]):1;
+}
+
+function nextCandle(){
+  if(mode==='candles'){
+    if(!candles.length) return simStep();
+    const c = candles[idx % candles.length];
+    const atr = candleATRs[idx % candles.length];
+    // anchorOpen resets each "anchor" block: every 60 candles
+    if(idx % 60 === 0){
+      anchorOpen = c.o;
+    }
+    atr33 = Math.max(0.05, atr);
+    lastClose = c.c;
+    idx++;
+    return c;
+  }
+  return simStep();
+}
+
+// =====================================================
+// Mapping rules (faithful to your descriptions)
+// =====================================================
+// Hemisphere: above/below anchor open.
+// Location magnitude: deviation = |close - anchorOpen| / atr33.
+// Shell: S1 if dev <2, S2 if 2..3, S3 if 3..4, S4 if >=4.
+// Behavior: use correlation of close relative to anchorOpen with volume bias.
+// - buyVol/sellVol proxy: (close-low)/(high-low) vs (high-close)/(high-low).
+// - correlated = sign(close-anchorOpen) == sign(volBias) and |volBias|>eps
+// - de-corr = sign(close-anchorOpen) != sign(volBias) and |volBias|>eps
+// - neutral otherwise.
+
+function volBiasFromCandle(c){
+  const rng = Math.max(1e-9, c.h - c.l);
+  const buyVol = c.v * (c.c - c.l)/rng;
+  const sellVol = c.v * (c.h - c.c)/rng;
+  return buyVol - sellVol; // >0 buy-side
+}
+
+function classify(c){
+  const dev = Math.abs(c.c - anchorOpen) / atr33;
+  const shell = dev < 2 ? 'S1' : dev < 3 ? 'S2' : dev < 4 ? 'S3' : 'S4';
+  const hemi = c.c >= anchorOpen ? 'ABOVE' : 'BELOW';
+
+  const vb = volBiasFromCandle(c);
+  const vs = vb / Math.max(1, c.v);
+  const biasSign = sgn(c.c - anchorOpen);
+  const volSign = sgn(vb);
+
+  let beh='NEUTRAL';
+  if(Math.abs(vb) > 0.02*c.v && biasSign !== 0){
+    beh = (biasSign === volSign) ? 'CORRELATED' : 'DE-CORR';
+  }
+
+  return {dev, shell, hemi, beh, vs};
+}
+
+// =====================================================
+// Drawing
+// =====================================================
+function drawWire(cx,cy,scale,rm,rM,alpha,ts,ps){
+  for(let pi=0;pi<ps;pi++){
+    const ph=(pi/ps)*Math.PI*2;
+    ctx.beginPath();let go=false;
+    for(let ti=0;ti<=ts;ti++){
+      const th=(ti/ts)*Math.PI*2;
+      let [x,y,z]=txyz(th,ph,rm,rM);
+      [x,y,z]=rot(x,y,z,rX,rY);
+      const p=proj(x,y,z,cx,cy,scale);
+      if(!go){ctx.moveTo(p.px,p.py);go=true;} else ctx.lineTo(p.px,p.py);
+    }
+    ctx.strokeStyle=`rgba(255,255,255,${alpha})`;ctx.lineWidth=0.35;ctx.stroke();
+  }
+  for(let ti=0;ti<ts;ti+=Math.max(1,Math.floor(ts/18))){
+    const th=(ti/ts)*Math.PI*2;
+    ctx.beginPath();let go=false;
+    for(let pi=0;pi<=ps;pi++){
+      const ph=(pi/ps)*Math.PI*2;
+      let [x,y,z]=txyz(th,ph,rm,rM);
+      [x,y,z]=rot(x,y,z,rX,rY);
+      const p=proj(x,y,z,cx,cy,scale);
+      if(!go){ctx.moveTo(p.px,p.py);go=true;} else ctx.lineTo(p.px,p.py);
+    }
+    ctx.strokeStyle=`rgba(255,255,255,${alpha*0.55})`;ctx.lineWidth=0.25;ctx.stroke();
+  }
+}
+
+function drawEquator(cx,cy,scale){
+  ctx.beginPath();let go=false;
+  for(let ti=0;ti<=72;ti++){
+    const th=(ti/72)*Math.PI*2;
+    let [x,y,z]=txyz(th,0,RM,Rm0);
+    [x,y,z]=rot(x,y,z,rX,rY);
+    const p=proj(x,y,z,cx,cy,scale);
+    if(!go){ctx.moveTo(p.px,p.py);go=true;} else ctx.lineTo(p.px,p.py);
+  }
+  ctx.setLineDash([3,7]);ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=0.9;ctx.stroke();ctx.setLineDash([]);
+}
+
+// mapping: deviation -> tube radius multiplier (0.75..(1+4))
+function tubeRadiusFromDev(dev){
+  // Keep a minimum base thickness, then expand with deviation.
+  // dev≈0 -> 0.75x, dev≈4 -> 4.0x
+  const m = 0.75 + clamp(dev,0,4) * 0.80; // 0.75..3.95
+  return Rm0 * m;
+}
+
+let tick=0;
+let thAcc=0;
+let prevBiasSign=0;
+
+function drawPrice(cx,cy,scale,c,meta){
+  // time axis: advance proportional to |delta|, stall if no movement
+  const delta = c.c - c.o;
+  thAcc += 0.012 + Math.min(0.04, Math.abs(delta) / Math.max(1e-6, atr33) * 0.008);
+
+  const th = thAcc;
+
+  // phase: hemisphere sets sign, behavior shapes phase
+  const hemiSign = (c.c >= anchorOpen) ? 1 : -1;
+  let ph = 0;
+  if(meta.beh === 'CORRELATED') ph = hemiSign * 0.85*Math.PI;
+  else if(meta.beh === 'DE-CORR') ph = -hemiSign * 0.85*Math.PI;
+  else ph = hemiSign * 0.15*Math.PI;
+
+  // location magnitude: deviation controls tube thickness
+  const rM = tubeRadiusFromDev(meta.dev);
+
+  // trail
+  const trail=90;
+  const pts=[];
+  for(let i=trail;i>=0;i--){
+    const fade=1-i/trail;
+    // small lagging smooth on dev/phase to avoid jitter but not invent motion
+    const ph_i = ph * (0.85 + 0.15*fade);
+    const rM_i = Rm0 + (rM - Rm0) * fade;
+    let [x,y,z]=txyz(th - i*0.020, ph_i, RM, rM_i);
+    [x,y,z]=rot(x,y,z,rX,rY);
+    pts.push({...proj(x,y,z,cx,cy,scale), age:fade});
+  }
+
+  for(const p of pts){
+    const a=p.age*0.55*Math.max(0.2,p.d);
+    const sz=p.age*2.8*Math.max(0.2,p.d);
+    ctx.beginPath();ctx.arc(p.px,p.py,sz,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${a})`;ctx.fill();
+  }
+
+  const h=pts[pts.length-1];
+  const g=ctx.createRadialGradient(h.px,h.py,0,h.px,h.py,16*h.d);
+  g.addColorStop(0,`rgba(255,255,255,${0.9*h.d})`);
+  g.addColorStop(0.4,`rgba(255,255,255,${0.2*h.d})`);
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.beginPath();ctx.arc(h.px,h.py,16*h.d,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+
+  // UI
+  document.getElementById('vt').textContent = (((th % (Math.PI*2))/(Math.PI*2))*100).toFixed(0) + '%';
+  document.getElementById('vs').textContent = meta.shell;
+  document.getElementById('vv').textContent = meta.vs.toFixed(2);
+  document.getElementById('vh').textContent = meta.hemi;
+  document.getElementById('vb').textContent = meta.beh;
+
+  // rotation direction from bias change (bar color metaphor)
+  const biasSign = sgn(c.c - anchorOpen);
+  if(biasSign!==0 && biasSign!==prevBiasSign){
+    // nudge rotation only on state change, avoids fake motion
+    rY += biasSign * 0.06;
+    prevBiasSign = biasSign;
+  }
+
+  return {th, z:h.z};
+}
+
+function drawShadow(){
+  sctx.clearRect(0,0,W,SH);
+  const mid=SH*0.47;
+  sctx.beginPath();sctx.moveTo(0,mid);sctx.lineTo(W,mid);
+  sctx.strokeStyle='rgba(255,255,255,0.06)';sctx.setLineDash([3,8]);sctx.lineWidth=0.8;sctx.stroke();sctx.setLineDash([]);
+
+  // shell bands: centered on mid, widths proportional to ATR shells
+  const bands=[2,3,4];
+  bands.forEach((k,i)=>{
+    const s = (k/4)*0.43;
+    sctx.fillStyle = `rgba(255,255,255,${0.010 - i*0.002})`;
+    sctx.fillRect(0, mid - SH*s, W, SH*s*2);
+  });
+
+  // price trace uses recent simulated z projection
+  const bars=Math.floor(W/3.2);
+  const pts=[];
+  for(let i=0;i<bars;i++){
+    const t = (i-bars);
+    // reconstruct a soft history from thAcc, not random
+    const ph = Math.sin((thAcc + t*0.02)*1.1) * 0.5;
+    const z = Rm0 * ph;
+    pts.push({x:i*3.2, y:mid - z*SH*2.5, z});
+  }
+  for(let i=1;i<pts.length;i++){
+    const p=pts[i],pv=pts[i-1];
+    const a=0.14+0.3*Math.abs(p.z)/Rm0;
+    sctx.beginPath();sctx.moveTo(p.x,pv.y);sctx.lineTo(p.x,p.y);
+    sctx.strokeStyle = p.y < pv.y ? `rgba(210,210,210,${a})` : `rgba(85,85,85,${a*1.2})`;
+    sctx.lineWidth=1.4;sctx.stroke();
+  }
+  const last=pts[pts.length-1];
+  const g=sctx.createRadialGradient(last.x,last.y,0,last.x,last.y,10);
+  g.addColorStop(0,'rgba(255,255,255,0.35)');g.addColorStop(1,'rgba(255,255,255,0)');
+  sctx.beginPath();sctx.arc(last.x,last.y,10,0,Math.PI*2);sctx.fillStyle=g;sctx.fill();
+}
+
+function drawVig(){
+  const vig=ctx.createRadialGradient(W/2,H/2,H*0.07,W/2,H/2,H*0.72);
+  vig.addColorStop(0,'rgba(0,0,0,0)');
+  vig.addColorStop(1,'rgba(0,0,0,0.5)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+}
+
+function loop(){
+  tick++;
+  if(!dragging){
+    if(autoRot){rY+=0.003;rX+=0.0004;}
+    else{vX*=0.93;vY*=0.93;rX+=vX;rY+=vY;if(Math.abs(vX)<0.0001&&Math.abs(vY)<0.0001)autoRot=true;}
+  }
+
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  drawVig();
+
+  const cx=W*0.5, cy=(H-SH)*0.48;
+  const scale=Math.min(W,H-SH)*0.35;
+
+  // shells in geometry: tie tube radius to a *fixed* shell scale (Rm0), and show faint expansions
+  const shellMs=[1.0,2.0,3.0,4.0];
+  const al=[0.072,0.045,0.028,0.016];
+  const ts=[62,50,40,32];
+  const ps=[30,26,22,18];
+  for(let i=0;i<4;i++){
+    drawWire(cx,cy,scale,RM,Rm0*(0.75+shellMs[i]*0.80),al[i],ts[i],ps[i]);
+  }
+
+  drawEquator(cx,cy,scale);
+
+  const c = nextCandle();
+  const meta = classify(c);
+  drawPrice(cx,cy,scale,c,meta);
+
+  ctx.beginPath();ctx.moveTo(0,H-SH);ctx.lineTo(W,H-SH);
+  ctx.strokeStyle='rgba(255,255,255,0.035)';ctx.lineWidth=1;ctx.stroke();
+
+  drawShadow();
+  requestAnimationFrame(loop);
+}
+
+// =====================================================
+// Panel controls
+// =====================================================
+const panel=document.getElementById('panel');
+addEventListener('keydown',e=>{
+  if(e.key==='i'||e.key==='I') panel.classList.toggle('show');
+});
+
+document.getElementById('btnReset').onclick=()=>{resetSim();msg.textContent='reset';setTimeout(()=>msg.textContent='',900);};
+
+document.getElementById('btnSim').onclick=()=>{mode='sim';resetSim();msg.textContent='simulate';setTimeout(()=>msg.textContent='',900);};
+
+document.getElementById('btnUse').onclick=()=>{
+  try{
+    const raw=document.getElementById('txt').value.trim();
+    if(!raw){msg.textContent='paste JSON first';setTimeout(()=>msg.textContent='',1200);return;}
+    const arr=JSON.parse(raw);
+    const cs=arr.map(x=>({o:+x.open??+x.o, h:+x.high??+x.h, l:+x.low??+x.l, c:+x.close??+x.c, v:+x.volume??+x.v??1000}));
+    if(!cs.length) throw new Error('empty');
+    useCandles(cs);
+    mode='candles';
+    msg.textContent='using candles';setTimeout(()=>msg.textContent='',1200);
+  }catch(err){
+    msg.textContent='bad JSON';setTimeout(()=>msg.textContent='',1200);
+  }
+};
+
+// start
+resetSim();
+loop();
+</script>
+</body>
+</html>
