@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ω</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Space+Mono:wght@400&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: #060606;
+    overflow: hidden;
+    width: 100vw; height: 100vh;
+    font-family: 'Space Mono', monospace;
+    cursor: crosshair;
+  }
+  #main { position: fixed; inset: 0; }
+
+  /* chart panel — bottom strip */
+  #chart-panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 140px;
+    border-top: 1px solid rgba(200,169,110,0.08);
+    background: rgba(6,6,6,0.85);
+    backdrop-filter: blur(4px);
+  }
+  #chart-canvas { display: block; width: 100%; height: 100%; }
+
+  /* shell legend — left */
+  #legend {
+    position: fixed;
+    left: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .sh-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sh-line {
+    width: 28px; height: 1px;
+  }
+  .sh-label {
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    color: rgba(200,169,110,0.35);
+    text-transform: uppercase;
+  }
+
+  /* omega mark */
+  #mark {
+    position: fixed;
+    top: 26px; left: 32px;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 52px;
+    font-weight: 300;
+    color: rgba(200,169,110,0.55);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    user-select: none;
+  }
+
+  /* axis state — top right */
+  #state {
+    position: fixed;
+    top: 28px; right: 28px;
+    text-align: right;
+  }
+  .state-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .state-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(200,169,110,0.25);
+    transition: background 0.4s;
+  }
+  .state-dot.on { background: #c8a96e; }
+  .state-key {
+    font-size: 8px;
+    letter-spacing: 0.25em;
+    color: rgba(200,169,110,0.25);
+    text-transform: uppercase;
+  }
+  .state-key.on { color: rgba(200,169,110,0.7); }
+
+  /* anchor open marker */
+  #anchor-label {
+    position: fixed;
+    font-size: 7px;
+    letter-spacing: 0.18em;
+    color: rgba(200,169,110,0.35);
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* not i */
+  #noti {
+    position: fixed;
+    bottom: 158px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 10px;
+    letter-spacing: 0.35em;
+    color: rgba(200,169,110,0.12);
+    text-transform: uppercase;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="main"></canvas>
+
+<div id="chart-panel">
+  <canvas id="chart-canvas"></canvas>
+</div>
+
+<div id="mark">Ω</div>
+
+<div id="legend">
+  <div class="sh-item">
+    <div class="sh-line" style="background:rgba(200,169,110,0.55)"></div>
+    <span class="sh-label">S1 · 1×</span>
+  </div>
+  <div class="sh-item">
+    <div class="sh-line" style="background:rgba(200,169,110,0.35)"></div>
+    <span class="sh-label">S2 · 2×</span>
+  </div>
+  <div class="sh-item">
+    <div class="sh-line" style="background:rgba(200,169,110,0.2)"></div>
+    <span class="sh-label">S3 · 3×</span>
+  </div>
+  <div class="sh-item">
+    <div class="sh-line" style="background:rgba(200,169,110,0.1)"></div>
+    <span class="sh-label">S4 · 4×</span>
+  </div>
+</div>
+
+<div id="state">
+  <div class="state-row">
+    <span class="state-key" id="lbl-x">X · Time</span>
+    <div class="state-dot" id="dot-x"></div>
+  </div>
+  <div class="state-row">
+    <span class="state-key" id="lbl-y">Y · Location</span>
+    <div class="state-dot" id="dot-y"></div>
+  </div>
+  <div class="state-row">
+    <span class="state-key" id="lbl-z">Z · Behavior</span>
+    <div class="state-dot" id="dot-z"></div>
+  </div>
+</div>
+
+<div id="noti">NOT I</div>
+
+<script>
+// ─── MAIN CANVAS ───────────────────────────────────────────────
+const main = document.getElementById('main');
+const ctx = main.getContext('2d');
+let W, H, cx, cy;
+
+// ─── CHART CANVAS ──────────────────────────────────────────────
+const chartEl = document.getElementById('chart-canvas');
+const cctx = chartEl.getContext('2d');
+let CW, CH;
+
+function resize() {
+  W = main.width = window.innerWidth;
+  H = main.height = window.innerHeight;
+  cx = W / 2; cy = (H - 140) / 2;
+
+  CW = chartEl.width = chartEl.offsetWidth;
+  CH = chartEl.height = chartEl.offsetHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── DRAG ──────────────────────────────────────────────────────
+let rotX = 0.38, rotY = 0.0;
+let tRX = 0.38, tRY = 0.0;
+let drag = false, lx = 0, ly = 0;
+
+main.addEventListener('mousedown', e => { drag = true; lx = e.clientX; ly = e.clientY; });
+window.addEventListener('mouseup', () => drag = false);
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  tRY += (e.clientX - lx) * 0.005;
+  tRX += (e.clientY - ly) * 0.005;
+  lx = e.clientX; ly = e.clientY;
+});
+main.addEventListener('touchstart', e => { drag = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; });
+window.addEventListener('touchend', () => drag = false);
+window.addEventListener('touchmove', e => {
+  if (!drag) return;
+  tRY += (e.touches[0].clientX - lx) * 0.005;
+  tRX += (e.touches[0].clientY - ly) * 0.005;
+  lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+});
+
+// ─── 3D ────────────────────────────────────────────────────────
+function rot3(x, y, z, rx, ry) {
+  let x1 = x * Math.cos(ry) + z * Math.sin(ry);
+  let z1 = -x * Math.sin(ry) + z * Math.cos(ry);
+  let y2 = y * Math.cos(rx) - z1 * Math.sin(rx);
+  let z2 = y * Math.sin(rx) + z1 * Math.cos(rx);
+  return [x1, y2, z2];
+}
+function proj(x, y, z) {
+  const fov = 680;
+  const s = fov / (fov + z);
+  return [cx + x * s, cy - y * s, s];
+}
+
+// ─── TORUS GEOMETRY ────────────────────────────────────────────
+const R = 148, r = 56;
+const U = 80, V = 32;
+
+function tPt(u, v) {
+  return [
+    (R + r * Math.cos(v)) * Math.cos(u),
+    r * Math.sin(v),
+    (R + r * Math.cos(v)) * Math.sin(u)
+  ];
+}
+
+// precompute grid
+const geo = [];
+for (let i = 0; i <= U; i++) {
+  const row = [];
+  for (let j = 0; j <= V; j++)
+    row.push(tPt((i/U)*Math.PI*2, (j/V)*Math.PI*2));
+  geo.push(row);
+}
+
+// ─── SHELLS (concentric tori at scaled radii) ──────────────────
+// shells are expanded torus copies — same tube, bigger/smaller R
+const shellScales = [0.46, 0.72, 0.88, 1.0]; // S1 inner → S4 outer
+const shellAlpha  = [0.55, 0.35, 0.20, 0.10];
+const shellColors = shellAlpha.map(a => `rgba(200,169,110,${a})`);
+
+function buildShellGeo(scale) {
+  // shell = torus with R scaled, keeping tube same feel
+  const Rs = R * scale;
+  const rs = r * 0.75;
+  const g = [];
+  for (let i = 0; i <= U; i++) {
+    const row = [];
+    for (let j = 0; j <= V; j++) {
+      const uu = (i/U)*Math.PI*2, vv = (j/V)*Math.PI*2;
+      row.push([
+        (Rs + rs * Math.cos(vv)) * Math.cos(uu),
+        rs * Math.sin(vv),
+        (Rs + rs * Math.cos(vv)) * Math.sin(uu)
+      ]);
+    }
+    g.push(row);
+  }
+  return g;
+}
+const shellGeos = shellScales.map(buildShellGeo);
+
+// ─── DOT STATE ─────────────────────────────────────────────────
+let u = 0, v = 0;
+const uSpd = 0.0065;
+const vSpd = 0.0065 * Math.PI; // irrational → never repeats
+
+const TRAIL = 260;
+const trail = []; // 3d points
+const priceHistory = []; // 1d price value for chart (dot's Y on torus)
+const MAX_PRICE = 400;
+
+// axis state — driven by dot position on torus
+let axX = false, axY = false, axZ = false;
+
+// ─── ANCHOR OPEN LINE ──────────────────────────────────────────
+// equator of the torus (v = 0 plane, outer edge) = anchor open
+function drawAnchorOpen(rx, ry) {
+  const pts = [];
+  for (let i = 0; i <= 80; i++) {
+    const uu = (i/80)*Math.PI*2;
+    const [x, y, z] = [(R)*Math.cos(uu), 0, (R)*Math.sin(uu)];
+    const [rx2,ry2,rz2] = rot3(x,y,z,rx,ry);
+    pts.push(proj(rx2,ry2,rz2));
+  }
+  ctx.save();
+  ctx.setLineDash([3, 9]);
+  ctx.beginPath();
+  pts.forEach(([px,py],i) => i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py));
+  ctx.strokeStyle = 'rgba(200,169,110,0.22)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── DRAW SHELL ────────────────────────────────────────────────
+function drawShell(g, color) {
+  ctx.lineWidth = 0.4;
+  // u-rings
+  for (let i = 0; i < U; i += 4) {
+    ctx.beginPath();
+    for (let j = 0; j <= V; j++) {
+      const [x,y,z] = g[i][j];
+      const [rx2,ry2,rz2] = rot3(x,y,z,rotX,rotY);
+      const [px,py] = proj(rx2,ry2,rz2);
+      j===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
+  // v-lines sparse
+  for (let j = 0; j < V; j += 8) {
+    ctx.beginPath();
+    for (let i = 0; i <= U; i++) {
+      const [x,y,z] = g[i][j];
+      const [rx2,ry2,rz2] = rot3(x,y,z,rotX,rotY);
+      const [px,py] = proj(rx2,ry2,rz2);
+      i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
+}
+
+// ─── DRAW MAIN TORUS ───────────────────────────────────────────
+function drawTorus() {
+  const p = geo.map(row => row.map(([x,y,z]) => {
+    const [rx2,ry2,rz2] = rot3(x,y,z,rotX,rotY);
+    return proj(rx2,ry2,rz2);
+  }));
+
+  ctx.lineWidth = 0.5;
+  // u-rings
+  for (let i = 0; i < U; i += 2) {
+    ctx.beginPath();
+    for (let j = 0; j <= V; j++) {
+      const [px,py] = p[i][j];
+      j===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle = 'rgba(200,169,110,0.11)';
+    ctx.stroke();
+  }
+  // v-lines
+  for (let j = 0; j < V; j += 4) {
+    ctx.beginPath();
+    for (let i = 0; i <= U; i++) {
+      const [px,py] = p[i][j];
+      i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle = 'rgba(200,169,110,0.06)';
+    ctx.stroke();
+  }
+}
+
+// ─── SHADOW / PROJECTION DOT ───────────────────────────────────
+// projects dot onto the "floor" (y=0 plane → bottom of 3D space)
+function drawShadow(x, y, z) {
+  // flatten y to bottom
+  const shadowY = -(cy - 30);
+  const [rx2,ry2,rz2] = rot3(x, 0, z, rotX, rotY);
+  const [px, py] = proj(rx2, ry2 + shadowY * 0, rz2);
+  // just draw directly below in screen space — simpler read
+  const [rx3,ry3,rz3] = rot3(x, y, z, rotX, rotY);
+  const [dpx, dpy] = proj(rx3, ry3, rz3);
+
+  // vertical drop line
+  const floorY = cy + 100;
+  ctx.beginPath();
+  ctx.moveTo(dpx, dpy);
+  ctx.lineTo(dpx, floorY);
+  ctx.strokeStyle = 'rgba(200,169,110,0.06)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // shadow ellipse
+  ctx.beginPath();
+  ctx.ellipse(dpx, floorY, 6, 2.5, 0, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(200,169,110,0.12)';
+  ctx.fill();
+}
+
+// ─── CHART ─────────────────────────────────────────────────────
+function drawChart() {
+  cctx.clearRect(0, 0, CW, CH);
+
+  if (priceHistory.length < 2) return;
+
+  const pad = { l: 48, r: 16, t: 18, b: 24 };
+  const pw = CW - pad.l - pad.r;
+  const ph = CH - pad.t - pad.b;
+
+  const vals = priceHistory.slice(-MAX_PRICE);
+  const mn = Math.min(...vals);
+  const mx = Math.max(...vals);
+  const range = mx - mn || 1;
+
+  const toX = i => pad.l + (i / (vals.length - 1)) * pw;
+  const toY = v => pad.t + ph - ((v - mn) / range) * ph;
+
+  // shell bands on chart — S1–S4 as horizontal zones
+  const mid = (mn + mx) / 2;
+  const atr = range * 0.18;
+  const bands = [
+    { lo: mid - atr,     hi: mid + atr,     a: 0.07 },
+    { lo: mid - atr*2,   hi: mid + atr*2,   a: 0.05 },
+    { lo: mid - atr*3,   hi: mid + atr*3,   a: 0.03 },
+    { lo: mid - atr*4,   hi: mid + atr*4,   a: 0.02 },
+  ].reverse();
+
+  bands.forEach(b => {
+    const y1 = toY(Math.min(b.hi, mx + atr));
+    const y2 = toY(Math.max(b.lo, mn - atr));
+    cctx.fillStyle = `rgba(200,169,110,${b.a})`;
+    cctx.fillRect(pad.l, y1, pw, y2 - y1);
+  });
+
+  // anchor open — midline
+  const aoY = toY(mid);
+  cctx.save();
+  cctx.setLineDash([3, 8]);
+  cctx.beginPath();
+  cctx.moveTo(pad.l, aoY);
+  cctx.lineTo(pad.l + pw, aoY);
+  cctx.strokeStyle = 'rgba(200,169,110,0.28)';
+  cctx.lineWidth = 0.8;
+  cctx.stroke();
+  cctx.restore();
+
+  // anchor open label
+  cctx.fillStyle = 'rgba(200,169,110,0.3)';
+  cctx.font = '7px Space Mono, monospace';
+  cctx.fillText('OPEN', 2, aoY + 3);
+
+  // price line — gradient
+  const grad = cctx.createLinearGradient(pad.l, 0, pad.l + pw, 0);
+  grad.addColorStop(0, 'rgba(200,169,110,0.0)');
+  grad.addColorStop(0.3, 'rgba(200,169,110,0.4)');
+  grad.addColorStop(1, 'rgba(200,169,110,0.9)');
+
+  cctx.beginPath();
+  vals.forEach((v, i) => {
+    const x = toX(i), y = toY(v);
+    i === 0 ? cctx.moveTo(x, y) : cctx.lineTo(x, y);
+  });
+  cctx.strokeStyle = grad;
+  cctx.lineWidth = 1.2;
+  cctx.stroke();
+
+  // fill under
+  cctx.beginPath();
+  vals.forEach((v, i) => {
+    const x = toX(i), y = toY(v);
+    i === 0 ? cctx.moveTo(x, y) : cctx.lineTo(x, y);
+  });
+  cctx.lineTo(toX(vals.length - 1), pad.t + ph);
+  cctx.lineTo(pad.l, pad.t + ph);
+  cctx.closePath();
+  const fillGrad = cctx.createLinearGradient(0, pad.t, 0, pad.t + ph);
+  fillGrad.addColorStop(0, 'rgba(200,169,110,0.08)');
+  fillGrad.addColorStop(1, 'rgba(200,169,110,0)');
+  cctx.fillStyle = fillGrad;
+  cctx.fill();
+
+  // current dot on chart
+  const last = vals[vals.length - 1];
+  const ex = toX(vals.length - 1);
+  const ey = toY(last);
+  cctx.beginPath();
+  cctx.arc(ex, ey, 3, 0, Math.PI*2);
+  cctx.fillStyle = '#c8a96e';
+  cctx.fill();
+
+  // above/below label
+  const side = last > mid ? 'ABOVE OPEN' : 'BELOW OPEN';
+  const sideColor = last > mid ? 'rgba(200,169,110,0.55)' : 'rgba(180,120,90,0.55)';
+  cctx.fillStyle = sideColor;
+  cctx.font = '7px Space Mono, monospace';
+  cctx.textAlign = 'right';
+  cctx.fillText(side, CW - pad.r, pad.t + 10);
+  cctx.textAlign = 'left';
+
+  // y-axis ticks
+  cctx.fillStyle = 'rgba(200,169,110,0.18)';
+  cctx.font = '7px Space Mono, monospace';
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    const val = mn + frac * range;
+    const y = toY(val);
+    cctx.beginPath();
+    cctx.moveTo(pad.l - 4, y);
+    cctx.lineTo(pad.l, y);
+    cctx.strokeStyle = 'rgba(200,169,110,0.15)';
+    cctx.lineWidth = 0.5;
+    cctx.stroke();
+    cctx.fillText(val.toFixed(0), 2, y + 3);
+  });
+}
+
+// ─── UPDATE AXIS STATE ─────────────────────────────────────────
+let axTimer = 0;
+function updateAxisState(dotU, dotV) {
+  axTimer++;
+  // X (time) — pulses on u crossing multiples of π/2
+  axX = (Math.sin(dotU * 2) > 0.85);
+  // Y (location) — based on which shell (v position)
+  const vNorm = ((dotV % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+  axY = vNorm < Math.PI * 0.6 || vNorm > Math.PI * 1.4;
+  // Z (behavior) — only when both X and Y
+  axZ = axX && axY && (Math.sin(axTimer * 0.04) > 0.3);
+
+  ['x','y','z'].forEach(k => {
+    const on = k === 'x' ? axX : k === 'y' ? axY : axZ;
+    document.getElementById(`dot-${k}`).className = 'state-dot' + (on ? ' on' : '');
+    document.getElementById(`lbl-${k}`).className = 'state-key' + (on ? ' on' : '');
+  });
+}
+
+// ─── RENDER LOOP ───────────────────────────────────────────────
+let frame = 0;
+function render() {
+  frame++;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#060606';
+  ctx.fillRect(0, 0, W, H);
+
+  // lerp rotation + auto spin
+  rotX += (tRX - rotX) * 0.07;
+  rotY += (tRY - rotY) * 0.07;
+  tRY += 0.0022;
+
+  // advance dot
+  u += uSpd;
+  v += vSpd;
+
+  const [dx, dy, dz] = tPt(u, v);
+
+  // price value: use dot's y + slight noise for organic feel
+  const price = dy + Math.sin(frame * 0.03) * 4 + Math.sin(frame * 0.11) * 2;
+  priceHistory.push(price);
+  if (priceHistory.length > MAX_PRICE * 2) priceHistory.shift();
+
+  trail.push([dx, dy, dz]);
+  if (trail.length > TRAIL) trail.shift();
+
+  updateAxisState(u, v);
+
+  // ── shells (S4 outermost → S1 innermost) ──
+  for (let s = shellGeos.length - 1; s >= 0; s--) {
+    drawShell(shellGeos[s], shellColors[s]);
+  }
+
+  // ── anchor open equator ──
+  drawAnchorOpen(rotX, rotY);
+
+  // ── main torus ──
+  drawTorus();
+
+  // ── shadow drop ──
+  drawShadow(dx, dy, dz);
+
+  // ── trail ──
+  for (let i = 1; i < trail.length; i++) {
+    const frac = i / trail.length;
+    const [ax,ay,az] = trail[i-1];
+    const [bx,by,bz] = trail[i];
+    const [rax,ray,raz] = rot3(ax,ay,az,rotX,rotY);
+    const [rbx,rby,rbz] = rot3(bx,by,bz,rotX,rotY);
+    const [pax,pay] = proj(rax,ray,raz);
+    const [pbx,pby] = proj(rbx,rby,rbz);
+    ctx.beginPath();
+    ctx.moveTo(pax,pay);
+    ctx.lineTo(pbx,pby);
+    // color: above/below anchor open (y=0) shifts hue
+    const above = ay > 0;
+    ctx.strokeStyle = above
+      ? `rgba(200,169,110,${frac*0.55})`
+      : `rgba(160,110,80,${frac*0.45})`;
+    ctx.lineWidth = frac * 2.0;
+    ctx.stroke();
+  }
+
+  // ── dot glow ──
+  const [rdx,rdy,rdz] = rot3(dx,dy,dz,rotX,rotY);
+  const [px,py,ps] = proj(rdx,rdy,rdz);
+
+  const g1 = ctx.createRadialGradient(px,py,0,px,py,24);
+  g1.addColorStop(0, 'rgba(200,169,110,0.5)');
+  g1.addColorStop(1, 'rgba(200,169,110,0)');
+  ctx.beginPath();
+  ctx.arc(px,py,24,0,Math.PI*2);
+  ctx.fillStyle = g1;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(px,py,4.5,0,Math.PI*2);
+  ctx.fillStyle = '#c8a96e';
+  ctx.fill();
+
+  // ── chart ──
+  drawChart();
+
+  requestAnimationFrame(render);
+}
+
+render();
+</script>
+</body>
+</html>
